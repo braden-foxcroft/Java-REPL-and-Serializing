@@ -4,7 +4,7 @@ import java.util.HashMap;
 
 public class ObjectTerminal {
 	
-	public static void main(String argv[]) {
+	public static void main(String argv[]) throws ClassNotFoundException {
 		TerminalWrapper tw = new TerminalWrapper();
 		HashMap<String, Object> vars = new HashMap<>();
 		// TODO network stuff
@@ -14,7 +14,9 @@ public class ObjectTerminal {
 	public static void mainTerminal(Terminal t, HashMap<String,Object> vars) {
 		while (true) {
 			String c = t.read();
-			if (c.equals("help")) {
+			if (c.equals("exit")) {
+				break;
+			} else if (c.equals("help")) {
 				help(t);
 			} else if (c.equals("help expr")) {
 				exprHelp(t);
@@ -24,10 +26,13 @@ public class ObjectTerminal {
 				handleAssignment(cs[0].strip(),cs[1].strip(),vars,t);
 			} else if (c.startsWith("send ")) {
 				// TODO 'send' command
+				c = c.substring(5);
+				handleSend(c, vars, t);
 			} else {
 				handleExpression(c, vars, t);
 			}
 		}
+		t.write("done");
 	}
 	
 	// Handles a variable assignment. A wrapper for handling error-messages.
@@ -62,12 +67,12 @@ public class ObjectTerminal {
 			// TODO
 			
 			// Some string parsing.
-			String[] ress = res.split("[",2);
+			String[] ress = res.split("\\[",2);
 			ress[1] = ress[1].strip();
 			if (!ress[1].matches(".*\\]$")) {
 				throw new Exception("missing ']'");
 			}
-			ress[1] = ress[1].substring(0, ress[1].length()-2); // remove last char
+			ress[1] = ress[1].substring(0, ress[1].length()-1); // remove last char
 			ress[0] = ress[0].strip();
 			// Check for var
 			if (!vars.containsKey(ress[0])) {
@@ -82,7 +87,7 @@ public class ObjectTerminal {
 			return val;
 		} else if (res.contains(".")) {
 			// a field
-			String[] parts = res.split(".", 2);
+			String[] parts = res.split("\\.", 2);
 			if (vars.containsKey(parts[0].strip())) {
 				Object outp = vars.get(parts[0].strip());
 				Class<?> c = outp.getClass();
@@ -105,38 +110,112 @@ public class ObjectTerminal {
 	
 	// Performs an expression. May throw exceptions.
 	// Returns the result as an Object.
-	public static Object doExpression(String expr, HashMap<String,Object> vars) {
+	public static Object doExpression(String expr, HashMap<String,Object> vars) throws Exception {
+		if (expr.equals("true")) {
+			return true;
+		} else if (expr.equals("false")) {
+			return false;
+		} else if (isNum(expr)) {
+			return Integer.valueOf(expr);
+		} else if (expr.startsWith("f:")) {
+			return Float.valueOf(expr);
+		} else if (expr.startsWith("\"")) {
+			// string
+			if (!expr.endsWith("\"")) {
+				throw new Exception("Bad string, no end quote");
+			}
+			expr = expr.substring(1, expr.length()-1); // remove quotes
+			return expr; // A literal string.
+		} else if (expr.startsWith("'")) {
+			// char
+			if (!expr.endsWith("'")) {
+				throw new Exception("bad char: missing single quote");
+			}
+			if (expr.length() != 3) {
+				throw new Exception("bad char: not 1 char");
+			}
+			return expr.charAt(1); // get the relevant char
+		} else if (expr.startsWith("new ") && expr.endsWith("}")) {
+			// Array constructor
+			// TODO
+			
+		} else if (expr.startsWith("new ") && expr.endsWith(")")) {
+			// Simple constructor
+			// TODO
+			
+			
+		} else if (expr.endsWith("()") && expr.contains(".")) {
+			// method call. (Constructors already filtered)
+			// split into var and method
+			String[] exprs = expr.split("\\.", 2);
+			exprs[0] = exprs[0].strip();
+			exprs[1] = exprs[1].substring(0, exprs[1].length()-2); // remove brackets
+			// Perform call
+			if (!vars.containsKey(exprs[0])) {
+				throw new Exception("var not found: " + exprs[0]);
+			}
+			Object var = vars.get(exprs[0]);
+			Class<?> c = var.getClass();
+			Method m = c.getMethod(exprs[1], new Class<?>[] {}); // no params
+			m.setAccessible(true);
+			Object res = m.invoke(var, new Object[] {}); // invoke
+			return res;
+		} else if (expr.contains(".")) {
+			// Field
+			String[] exprs = expr.split("\\.", 2);
+			exprs[0] = exprs[0].strip();
+			exprs[1] = exprs[1].strip();
+			// Perform call
+			if (!vars.containsKey(exprs[0])) {
+				throw new Exception("var not found: " + exprs[0]);
+			}
+			Object var = vars.get(exprs[0]);
+			Class<?> c = var.getClass();
+			Field f = c.getField(exprs[1]);
+			f.setAccessible(true);
+			return f.get(var);
+		}
+		throw new Exception("TODO");
 		// TODO
 	}
 	
 	public static void exprHelp(Terminal t) {
 		t.write("expr :: var");
 		t.write("expr :: var.field");
-		t.write("expr :: var.method()");
+		t.write("expr :: var.method()"); // g
 		t.write("expr :: new Class(<expr>,<expr>...)");
-		t.write("expr :: new ClassName[] {<expr>,<expr>...}");
+		t.write("expr :: new Class[] {<expr>,<expr>...}");
 		t.write("expr :: var[index]");
-		t.write("expr :: <int>");
-		t.write("expr :: f<float>");
-		t.write("expr :: \"<string>\"");
-		t.write("expr :: '<char>'");
-		t.write("expr :: true");
-		t.write("expr :: false");
+		t.write("expr :: <int>"); // g
+		t.write("expr :: f:<float>"); // g
+		t.write("expr :: \"<string>\""); // g
+		t.write("expr :: '<char>'"); // g
+		t.write("expr :: true"); // g
+		t.write("expr :: false"); // g
 		t.write("note: Due to lazy parsing, we cannot nest comma-separated lists. (split-on-comma)");
 	}
 	
 	public static void help(Terminal t) {
 		t.write("Assignments:");
-		t.write("var = <expr>");
-		t.write("var.field = <expr>");
+		t.write("var = <expr>"); // g
+		t.write("var.field = <expr>"); // g
 		t.write("var[index] = <expr>");
 		t.write("");
 		t.write("To print an expression result:");
-		t.write("<expr>");
+		t.write("<expr>"); // g
 		t.write("");
 		t.write("To send an object:");
 		t.write("send var");
 		t.write("");
 		t.write("type 'help' to see this again, or 'help expr' to see the expression syntax");
+	}
+	
+	private static boolean isNum(String s) {
+		try {
+			Integer.valueOf(s);
+			return true;
+		} catch (Exception e) {
+			return false;
+		}
 	}
 }

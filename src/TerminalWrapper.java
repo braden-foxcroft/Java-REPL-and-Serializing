@@ -14,6 +14,7 @@ public class TerminalWrapper implements Terminal {
 	// Gets a line from the actual terminal.
 	@Override
 	public String read() {
+		System.out.print("> ");
 		try
 		{
 			return r.readLine();
@@ -25,7 +26,7 @@ public class TerminalWrapper implements Terminal {
 	// writes a string to the terminal
 	@Override
 	public void write(String s) {
-		System.out.print(s);
+		System.out.println(s);
 	}
 	
 }
