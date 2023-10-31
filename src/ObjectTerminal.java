@@ -1,4 +1,5 @@
 import java.lang.reflect.*;
+import java.util.Arrays;
 import java.util.HashMap;
 
 
@@ -38,7 +39,7 @@ public class ObjectTerminal {
 	// Handles a variable assignment. A wrapper for handling error-messages.
 	public static void handleAssignment(String res, String expr, HashMap<String,Object> vars, Terminal t) {
 		try {
-			t.write(doAssignment(res, expr, vars).toString());
+			t.write(myToString(doAssignment(res, expr, vars)));
 		} catch (Exception e) {
 			t.write(e.toString());
 		}
@@ -47,7 +48,7 @@ public class ObjectTerminal {
 	// Handles an expression command. A wrapper for handling error-messages.
 	public static void handleExpression(String expr, HashMap<String,Object> vars, Terminal t) {
 		try {
-			t.write(doExpression(expr, vars).toString());
+			t.write(myToString(doExpression(expr, vars)));
 		} catch (Exception e) {
 			t.write(e.toString());
 		}
@@ -64,7 +65,6 @@ public class ObjectTerminal {
 	public static Object doAssignment(String res, String expr, HashMap<String,Object> vars) throws Exception {
 		if (res.contains("[") || res.contains("]")) {
 			// an array
-			// TODO
 			
 			// Some string parsing.
 			String[] ress = res.split("\\[",2);
@@ -91,7 +91,8 @@ public class ObjectTerminal {
 			if (vars.containsKey(parts[0].strip())) {
 				Object outp = vars.get(parts[0].strip());
 				Class<?> c = outp.getClass();
-				Field f = c.getField(parts[1]); // might fail.
+				Field f = myGetField(c,parts[1]); // might fail.
+				f.setAccessible(true);
 				Object val = doExpression(expr, vars);
 				f.set(outp, val); // Performs assignment.
 				return val;
@@ -111,6 +112,7 @@ public class ObjectTerminal {
 	// Performs an expression. May throw exceptions.
 	// Returns the result as an Object.
 	public static Object doExpression(String expr, HashMap<String,Object> vars) throws Exception {
+		expr = expr.strip();
 		if (expr.equals("true")) {
 			return true;
 		} else if (expr.equals("false")) {
@@ -118,7 +120,7 @@ public class ObjectTerminal {
 		} else if (isNum(expr)) {
 			return Integer.valueOf(expr);
 		} else if (expr.startsWith("f:")) {
-			return Float.valueOf(expr);
+			return Float.valueOf(expr.substring(2));
 		} else if (expr.startsWith("\"")) {
 			// string
 			if (!expr.endsWith("\"")) {
@@ -136,14 +138,53 @@ public class ObjectTerminal {
 			}
 			return expr.charAt(1); // get the relevant char
 		} else if (expr.startsWith("new ") && expr.endsWith("}")) {
-			// Array constructor
-			// TODO
+			expr = expr.substring(4); // Remove 'new '
+			String[] exprs = expr.split(" ", 2);
+			exprs[0].strip();
+			exprs[1] = exprs[1].substring(1,exprs[1].length()-1); // remove '{', '}'.
+			if (!exprs[0].endsWith("[]")) {
+				throw new Exception("Array initialization missing '[]'");
+			}
+			exprs[0] = exprs[0].substring(0, exprs[0].length()-2);
+			String[] params;
+			if (exprs[1] == "") {
+				params = new String[0]; // no params
+			} else {
+				params = exprs[1].split(",");
+			}
+			Object arr = makeArrayOf(exprs[0],params.length);
 			
+			for (int i = 0; i < params.length; i++) {
+				Array.set(arr, i, doExpression(params[i], vars)); // Set value appropriately
+			}
+			return arr;
 		} else if (expr.startsWith("new ") && expr.endsWith(")")) {
-			// Simple constructor
-			// TODO
-			
-			
+			expr = expr.substring(4); // Remove 'new '
+			String[] exprs = expr.split("\\(", 2);
+			exprs[0].strip();
+			exprs[1] = exprs[1].substring(0,exprs[1].length()-1); // remove close-bracket.
+			String[] params;
+			if (exprs[1] == "") {
+				params = new String[0]; // no params
+			} else {
+				params = exprs[1].split(",");
+			}
+			Object[] pObjs = new Object[params.length];
+			for (int i = 0; i < params.length; i++) {
+				Object o = doExpression(params[i], vars); // turn to object
+				pObjs[i] = o;
+			}
+			Class<?> c = Class.forName(exprs[0]);
+			for (Constructor<?> cn : c.getConstructors()) {
+				try {
+					cn.setAccessible(true);
+					Object o = cn.newInstance(pObjs);
+					return o;
+				} catch (Exception e) {
+					continue; // Wrong constructor, try again
+				}
+			}
+			throw new Exception("Could not find valid constructor!");
 		} else if (expr.endsWith("()") && expr.contains(".")) {
 			// method call. (Constructors already filtered)
 			// split into var and method
@@ -156,7 +197,7 @@ public class ObjectTerminal {
 			}
 			Object var = vars.get(exprs[0]);
 			Class<?> c = var.getClass();
-			Method m = c.getMethod(exprs[1], new Class<?>[] {}); // no params
+			Method m = myGetMethod(c,exprs[1], new Class<?>[] {}); // no params
 			m.setAccessible(true);
 			Object res = m.invoke(var, new Object[] {}); // invoke
 			return res;
@@ -171,21 +212,35 @@ public class ObjectTerminal {
 			}
 			Object var = vars.get(exprs[0]);
 			Class<?> c = var.getClass();
-			Field f = c.getField(exprs[1]);
+			Field f = myGetField(c,exprs[1]);
 			f.setAccessible(true);
 			return f.get(var);
+		} else if (expr.endsWith("]") && expr.contains("[")) {
+			// array index.
+			// Split on '['
+			String[] exprs = expr.substring(0,expr.length()-1).split("\\[",2);
+			// Perform call
+			if (!vars.containsKey(exprs[0])) {
+				throw new Exception("var not found: " + exprs[0]);
+			}
+			Object var = vars.get(exprs[0]);
+			int i = Integer.valueOf(exprs[1]);
+			return Array.get(var, i);
+		} else {
+			if (!vars.containsKey(expr)) {
+				throw new Exception("var not found: " + expr);
+			}
+			return vars.get(expr);
 		}
-		throw new Exception("TODO");
-		// TODO
 	}
 	
 	public static void exprHelp(Terminal t) {
-		t.write("expr :: var");
-		t.write("expr :: var.field");
+		t.write("expr :: var"); // g
+		t.write("expr :: var.field"); // g
 		t.write("expr :: var.method()"); // g
-		t.write("expr :: new Class(<expr>,<expr>...)");
-		t.write("expr :: new Class[] {<expr>,<expr>...}");
-		t.write("expr :: var[index]");
+		t.write("expr :: new Class(<expr>,<expr>...)"); // g
+		t.write("expr :: new Class[] {<expr>,<expr>...}"); // g
+		t.write("expr :: var[index]"); // g
 		t.write("expr :: <int>"); // g
 		t.write("expr :: f:<float>"); // g
 		t.write("expr :: \"<string>\""); // g
@@ -208,6 +263,108 @@ public class ObjectTerminal {
 		t.write("send var");
 		t.write("");
 		t.write("type 'help' to see this again, or 'help expr' to see the expression syntax");
+	}
+	
+	// Gets a field, even if private or from parent.
+	private static Field myGetField(Class<?> c, String name) throws Exception {
+		try {
+			return c.getDeclaredField(name);
+		} catch (Exception e) {
+			if (c.getSuperclass() != null) {
+				return myGetField(c.getSuperclass(), name);
+			} else {
+				throw new Exception("Could not get field: '" + name + "'");
+			}
+		}
+	}
+	
+	// Gets a field, even if private or from parent.
+	private static Method myGetMethod(Class<?> c, String name, Class<?>[] args) throws Exception {
+		try {
+			return c.getDeclaredMethod(name,args);
+		} catch (Exception e) {
+			if (c.getSuperclass() != null) {
+				return myGetMethod(c.getSuperclass(), name, args);
+			} else {
+				throw new Exception("Could not get method: '" + name + "'");
+			}
+		}
+	}
+	
+	// Makes an array with the given element type and length
+	private static Object makeArrayOf(String s, int length) throws Exception {
+		// simple case
+		if (!s.endsWith("[]")) {
+			Class<?> c;
+			if (s.equals("int")) {
+				c = int.class;
+			} else if (s.equals("byte")) { 
+				c = byte.class;
+			} else if (s.equals("short")) { 
+				c = short.class;
+			} else if (s.equals("long")) { 
+				c = long.class;
+			} else if (s.equals("float")) { 
+				c = float.class;
+			} else if (s.equals("double")) { 
+				c = double.class;
+			} else if (s.equals("boolean")) { 
+				c = boolean.class;
+			} else if (s.equals("char")) { 
+				c = char.class;
+			} else {
+				c = Class.forName(s);
+			}
+			return Array.newInstance(c, length);
+		}
+		String trueName = "";
+		while (s.endsWith("[]")) {
+			trueName = trueName + "[";
+			s = s.substring(0,s.length()-2);
+		}
+		trueName = trueName + toArrayNaming(s); // add whatever needs to be appended.
+		return Array.newInstance(Class.forName(trueName), length);
+	}
+	
+	public static String toArrayNaming(String s) {
+		if (s.equals("boolean")) {
+			return "Z";
+		} else if (s.equals("byte")) {
+			return "B";
+		} else if (s.equals("char")) {
+			return "C";
+		} else if (s.equals("double")) {
+			return "D";
+		} else if (s.equals("float")) {
+			return "F";
+		} else if (s.equals("int")) {
+			return "I";
+		} else if (s.equals("long")) {
+			return "J";
+		} else if (s.equals("short")) {
+			return "S";
+		} else {
+			return "L" + s;
+		}
+	}
+	
+	// A nicer toString for arrays
+	public static String myToString(Object o) throws Exception {
+		try {
+			String s = (String)o;
+			return "\"" + s + "\"";
+		} catch (Exception e) {}
+		if (o == null) {
+			return "null";
+		} else if (o.getClass().isArray() && !o.getClass().getComponentType().isPrimitive()) {
+			return Arrays.toString((Object[])o);
+		} else if (o.getClass().isArray()) {
+			Method m = Arrays.class.getDeclaredMethod("toString",
+					new Class<?>[] {o.getClass()});
+			return (String)m.invoke(null, new Object[] {o});
+		} else {
+			return o.toString();
+		}
 	}
 	
 	private static boolean isNum(String s) {
