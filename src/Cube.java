@@ -19,4 +19,9 @@ public class Cube {
 		return length * width * height;
 	}
 	
+	public String info() {
+		return "Cube(length=" + Integer.toString(length) +
+				", width=" + Integer.toString(width) +
+				", height=" + Float.toString(height) + ")";
+	}
 }

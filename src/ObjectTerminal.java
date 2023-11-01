@@ -30,6 +30,18 @@ public class ObjectTerminal {
 				// TODO 'send' command
 				c = c.substring(5);
 				handleSend(c, vars, t);
+			} else if (c.startsWith("xml ")) {
+				// TODO 'xml' command
+				c = c.substring(4);
+				handleXML(c, vars, t);
+			} else if (c.startsWith("recv ")) {
+				// TODO 'recv' command
+				c = c.substring(5);
+				handleSend(c, vars, t);
+			} else if (c.startsWith("info ")) {
+				// TODO 'info' command
+				c = c.substring(5);
+				handleSend(c, vars, t);
 			} else {
 				handleExpression(c, vars, t);
 			}
@@ -59,6 +71,33 @@ public class ObjectTerminal {
 	public static void handleSend(String toSend, HashMap<String,Object> vars, Terminal t) {
 		// TODO sending behavior
 		t.write("TODO");
+	}
+	
+	public static void handleXML(String varName, HashMap<String,Object> vars, Terminal t) {
+		try {
+			t.write(doXML(varName,vars,t));
+		} catch (Exception e) {
+			t.write(e.getMessage());
+			e.printStackTrace();
+		}
+	}
+	
+	private static String doXML(String varName, HashMap<String, Object> vars, Terminal t) throws Exception {
+		// Why is this reflective?
+		// So that, if serializer can't find its dependencies,
+		// we can still run the main code.
+		if (!vars.containsKey(varName)) {
+			throw new Exception("Could not find var: " + varName);
+		}
+		Object var = vars.get(varName);
+		Class<?> c;
+		try {
+			c = Class.forName("Serializer");
+		} catch (Throwable th) {
+			throw new Exception("For whatever reason, serializer couldn't load.");
+		}
+		Method objToXML = c.getMethod("objToXML", new Class<?>[] {Object.class});
+		return (String)objToXML.invoke(null,new Object[] {var});
 	}
 	
 	// Actually performs an assignment. May throw exceptions, but nothing fatal.
@@ -270,37 +309,45 @@ public class ObjectTerminal {
 	}
 	
 	public static void exprHelp(Terminal t) {
-		t.write("expr :: var"); // g
-		t.write("expr :: var.field"); // g
-		t.write("expr :: var.method()"); // g
-		t.write("expr :: var.method(single parameter)"); // g
-		t.write("expr :: new Class(<expr>,<expr>...)"); // g
-		t.write("expr :: new Class[] {<expr>,<expr>...}"); // g
-		t.write("expr :: var[index]"); // g
-		t.write("expr :: <int>"); // g
-		t.write("expr :: f:<float>"); // g
-		t.write("expr :: b:<byte>"); // g
-		t.write("expr :: s:<short>"); // g
-		t.write("expr :: s:<long>"); // g
+		t.write("expr :: var");
+		t.write("expr :: var.field");
+		t.write("expr :: var.method()");
+		t.write("expr :: var.method(<expr>,<expr>,<expr>)");
+		t.write("expr :: new Class(<expr>,<expr>...)");
+		t.write("expr :: new Class[] {<expr>,<expr>...}");
+		t.write("expr :: var[index]");
+		t.write("expr :: <int>");
+		t.write("expr :: f:<float>");
+		t.write("expr :: b:<byte>");
+		t.write("expr :: s:<short>");
+		t.write("expr :: s:<long>");
 		t.write("expr :: d:<double>");
-		t.write("expr :: \"<string>\""); // g
-		t.write("expr :: '<char>'"); // g
-		t.write("expr :: true"); // g
-		t.write("expr :: false"); // g
+		t.write("expr :: \"<string>\"");
+		t.write("expr :: '<char>'");
+		t.write("expr :: true");
+		t.write("expr :: false");
+		t.write("expr :: null");
 		t.write("note: Due to lazy parsing, we cannot nest comma-separated lists. (split-on-comma)");
 	}
 	
 	public static void help(Terminal t) {
 		t.write("Assignments:");
-		t.write("var = <expr>"); // g
-		t.write("var.field = <expr>"); // g
+		t.write("var = <expr>");
+		t.write("var.field = <expr>");
 		t.write("var[index] = <expr>");
 		t.write("");
 		t.write("To print an expression result:");
-		t.write("<expr>"); // g
+		t.write("<expr>");
 		t.write("");
 		t.write("To send an object:");
-		t.write("send var");
+		t.write("    send var");
+		t.write("To recieve an object:");
+		t.write("    recv var");
+		t.write("To print the xml for an object:");
+		t.write("   xml var");
+		t.write("To inspect an object: (-m for methods)");
+		t.write("   info var");
+		t.write("   info -m var");
 		t.write("");
 		t.write("type 'help' to see this again, or 'help expr' to see the expression syntax");
 	}
@@ -317,6 +364,21 @@ public class ObjectTerminal {
 			}
 		}
 	}
+	
+	// Get all fields. Used externally, by serializer and info.
+	public static Vector<Field> allFields(Class<?> c) {
+		Vector<Field> result = new Vector<>();
+		for (Field m : c.getDeclaredFields()) {
+			result.add(m);
+		}
+		if (c.getSuperclass() != null) {
+			result.addAll(allFields(c.getSuperclass()));
+		}
+		return result;
+	}
+	
+	// TODO info command, socket handling, de-serializing.
+	// TODO consider raw types like 'Integer', which we can't actually read the data from.
 	
 	// Gets a field, even if private or from parent.
 	/*
