@@ -1,6 +1,7 @@
 import java.lang.reflect.*;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.Vector;
 
 
 public class ObjectTerminal {
@@ -117,10 +118,20 @@ public class ObjectTerminal {
 			return true;
 		} else if (expr.equals("false")) {
 			return false;
+		} else if (expr.equals("null")) {
+			return null;
 		} else if (isNum(expr)) {
 			return Integer.valueOf(expr);
 		} else if (expr.startsWith("f:")) {
 			return Float.valueOf(expr.substring(2));
+		} else if (expr.startsWith("b:")) {
+			return Byte.valueOf(expr.substring(2));
+		} else if (expr.startsWith("s:")) {
+			return Short.valueOf(expr.substring(2));
+		} else if (expr.startsWith("l:")) {
+			return Long.valueOf(expr.substring(2));
+		} else if (expr.startsWith("d:")) {
+			return Double.valueOf(expr.substring(2));
 		} else if (expr.startsWith("\"")) {
 			// string
 			if (!expr.endsWith("\"")) {
@@ -155,7 +166,8 @@ public class ObjectTerminal {
 			Object arr = makeArrayOf(exprs[0],params.length);
 			
 			for (int i = 0; i < params.length; i++) {
-				Array.set(arr, i, doExpression(params[i], vars)); // Set value appropriately
+				Object o = doExpression(params[i], vars);
+				Array.set(arr, i, o); // Set value appropriately
 			}
 			return arr;
 		} else if (expr.startsWith("new ") && expr.endsWith(")")) {
@@ -185,22 +197,45 @@ public class ObjectTerminal {
 				}
 			}
 			throw new Exception("Could not find valid constructor!");
-		} else if (expr.endsWith("()") && expr.contains(".")) {
+		} else if (expr.endsWith(")") && expr.contains(".")) {
 			// method call. (Constructors already filtered)
 			// split into var and method
-			String[] exprs = expr.split("\\.", 2);
-			exprs[0] = exprs[0].strip();
-			exprs[1] = exprs[1].substring(0, exprs[1].length()-2); // remove brackets
-			// Perform call
-			if (!vars.containsKey(exprs[0])) {
-				throw new Exception("var not found: " + exprs[0]);
+			String[] exprs = expr.split("\\(", 2);
+			String varAndFunc = exprs[0];
+			String params = exprs[1].substring(0, exprs[1].length()-1); // remove ')'
+			String[] varAndFuncList = varAndFunc.split("\\.");
+			String varName = varAndFuncList[0];
+			String funcName = varAndFuncList[1];
+			// Find variable
+			if (!vars.containsKey(varName)) {
+				throw new Exception("var not found: " + varName);
 			}
-			Object var = vars.get(exprs[0]);
+			Object var = vars.get(varName);
 			Class<?> c = var.getClass();
-			Method m = myGetMethod(c,exprs[1], new Class<?>[] {}); // no params
-			m.setAccessible(true);
-			Object res = m.invoke(var, new Object[] {}); // invoke
-			return res;
+			// Get param count and list.
+			Object[] objParams;
+			String[] paramList;
+			if (params.equals("")) {
+				paramList = new String[0];
+			} else {
+				paramList = params.split(",");
+			}
+			objParams = new Object[paramList.length];
+			for (int i = 0; i < paramList.length; i++) {
+				objParams[i] = doExpression(paramList[i].strip(), vars);
+			}
+			for (Method m : allMethods(c)) {
+				try {
+					if (!m.getName().equals(funcName)) {continue;}
+					m.setAccessible(true); // might fail
+					return m.invoke(var, objParams); // invoke the method. (Might have wrong param types)
+				} catch (InvocationTargetException e) {
+					// Found the method, but got an exception
+					throw e; // Throw a conventional exception
+				} catch (Exception e) {continue;}
+			}
+			throw new Exception("Cannot find method for :" + expr);
+			// TODO support function calls.
 		} else if (expr.contains(".")) {
 			// Field
 			String[] exprs = expr.split("\\.", 2);
@@ -238,11 +273,16 @@ public class ObjectTerminal {
 		t.write("expr :: var"); // g
 		t.write("expr :: var.field"); // g
 		t.write("expr :: var.method()"); // g
+		t.write("expr :: var.method(single parameter)"); // g
 		t.write("expr :: new Class(<expr>,<expr>...)"); // g
 		t.write("expr :: new Class[] {<expr>,<expr>...}"); // g
 		t.write("expr :: var[index]"); // g
 		t.write("expr :: <int>"); // g
 		t.write("expr :: f:<float>"); // g
+		t.write("expr :: b:<byte>"); // g
+		t.write("expr :: s:<short>"); // g
+		t.write("expr :: s:<long>"); // g
+		t.write("expr :: d:<double>");
 		t.write("expr :: \"<string>\""); // g
 		t.write("expr :: '<char>'"); // g
 		t.write("expr :: true"); // g
@@ -273,12 +313,13 @@ public class ObjectTerminal {
 			if (c.getSuperclass() != null) {
 				return myGetField(c.getSuperclass(), name);
 			} else {
-				throw new Exception("Could not get field: '" + name + "'");
+				throw new Exception("Could not find field: '" + name + "'");
 			}
 		}
 	}
 	
 	// Gets a field, even if private or from parent.
+	/*
 	private static Method myGetMethod(Class<?> c, String name, Class<?>[] args) throws Exception {
 		try {
 			return c.getDeclaredMethod(name,args);
@@ -289,6 +330,18 @@ public class ObjectTerminal {
 				throw new Exception("Could not get method: '" + name + "'");
 			}
 		}
+	}
+	*/
+	
+	private static Vector<Method> allMethods(Class<?> c) {
+		Vector<Method> result = new Vector<>();
+		for (Method m : c.getDeclaredMethods()) {
+			result.add(m);
+		}
+		if (c.getSuperclass() != null) {
+			result.addAll(allMethods(c.getSuperclass()));
+		}
+		return result;
 	}
 	
 	// Makes an array with the given element type and length

@@ -1,4 +1,3 @@
-
 public class Cube {
 	private int length;
 	private int width;

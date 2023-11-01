@@ -1,0 +1,6 @@
+Rename var 'actParams' to 'objParams'
+Rename class 'GraphNode' to 'GND'
+Extract method 'isNum'
+Extract method 'myToString'
+Extract method 'toArrayNaming'
+Extract method 'makeArrayOf'
