@@ -69,6 +69,13 @@ public class Serializer {
 			res.addContent(e);
 			return res;
 		}
+		if (o instanceof Integer) {
+			// Special case: sending integers
+			Element e = new Element("value");
+			e.addContent(new Text(o.toString()));
+			res.addContent(e);
+			return res;
+		}
 		if (o instanceof Collection<?>) {
 			// Extract an array from it.
 			Object[] col = ((Collection<?>)o).toArray();
@@ -125,6 +132,7 @@ public class Serializer {
 					objs.add(n);
 				}
 			}
+			if (o instanceof String || o instanceof Integer) {continue;} // Skip Strings and Integers
 			// Add new objects
 			for (Object n : allRefs(o)) {
 				if (objs.contains(n) || n==null) {continue;} // Skip existing objects.

@@ -1,4 +1,9 @@
+import java.io.OutputStream;
 import java.lang.reflect.*;
+import java.net.InetAddress;
+import java.net.ServerSocket;
+import java.net.Socket;
+import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Vector;
@@ -6,11 +11,16 @@ import java.util.Vector;
 
 public class ObjectTerminal {
 	
+	private static ServerSocket serverSock = null; // the server socket
+	private static Socket sock = null; // The client-communication socket
+	
 	public static void main(String argv[]) throws ClassNotFoundException {
 		TerminalWrapper tw = new TerminalWrapper();
 		HashMap<String, Object> vars = new HashMap<>();
 		// TODO network stuff
 		mainTerminal(tw,vars);
+		if (serverSock != null) {serverSock = closeSSock(serverSock);}
+		if (sock != null) {sock = closeSock(sock);}
 	}
 	
 	public static void mainTerminal(Terminal t, HashMap<String,Object> vars) {
@@ -27,21 +37,18 @@ public class ObjectTerminal {
 				String[] cs = c.split(" = ", 2); // split halves
 				handleAssignment(cs[0].strip(),cs[1].strip(),vars,t);
 			} else if (c.startsWith("send ")) {
-				// TODO 'send' command
 				c = c.substring(5);
 				handleSend(c, vars, t);
 			} else if (c.startsWith("xml ")) {
-				// TODO 'xml' command
 				c = c.substring(4);
 				handleXML(c, vars, t);
-			} else if (c.startsWith("recv ")) {
-				// TODO 'recv' command
-				c = c.substring(5);
-				handleSend(c, vars, t);
+			} else if (c.equals("sock")) {
+				handleServ(t); // Make a server socket, show all socket info
+			} else if (c.equals("acc")) {
+				handleRecv(t); // Accept a connection from a server socket.
 			} else if (c.startsWith("info ")) {
-				// TODO 'info' command
 				c = c.substring(5);
-				handleSend(c, vars, t);
+				handleInfo(c, vars, t);
 			} else {
 				handleExpression(c, vars, t);
 			}
@@ -70,7 +77,23 @@ public class ObjectTerminal {
 	// Sends a thing over the server
 	public static void handleSend(String toSend, HashMap<String,Object> vars, Terminal t) {
 		// TODO sending behavior
-		t.write("TODO");
+		if (sock == null) {
+			t.write("no client socket open! Run 'acc' first!");
+			return;
+		}
+		String xml;
+		try {
+			xml = doXML(toSend,vars,t);
+		} catch (Exception e) {
+			t.write(e.getMessage());
+			return;
+		}
+		if (!putMessage(sock, xml)) {
+			t.write("socket crashed.");
+			sock = closeSock(sock);
+		} else {
+			t.write(xml);
+		}
 	}
 	
 	public static void handleXML(String varName, HashMap<String,Object> vars, Terminal t) {
@@ -80,6 +103,68 @@ public class ObjectTerminal {
 			t.write(e.getMessage());
 			e.printStackTrace();
 		}
+	}
+	
+	// Make a server if needed, and print its address.
+	public static void handleServ(Terminal t) {
+		// TODO make server
+		
+		// Make a server
+		if (serverSock == null) {
+			try {
+				serverSock = new ServerSocket(0, 0, InetAddress.getLoopbackAddress());
+			} catch (Exception e) {
+				t.write("could not make server");
+				return;
+			}
+			t.write("Made a server socket. Try any of the below addresses:");
+			
+		} else {
+			t.write("Server already exists:");
+		}
+		t.write("     " + serverSock.getInetAddress().getHostAddress() + ":" + Integer.toString(serverSock.getLocalPort()));
+		t.write("     " + serverSock.getInetAddress().getCanonicalHostName() + ":" + Integer.toString(serverSock.getLocalPort()));
+		t.write("     " + serverSock.getInetAddress().getHostName() + ":" + Integer.toString(serverSock.getLocalPort()));
+		t.write("");
+		
+		// Check the state of the client connection.
+		if (sock != null) {
+			if (sock.isClosed() || !sock.isConnected()) {
+				sock = null;
+				t.write("Client socket just crashed");
+			} else {
+				t.write("Client connected.");
+			}
+		} else {
+			t.write("No client. Use 'acc' to accept connection.");
+		}
+	}
+	
+	// Recieve a connection from the server socket.
+	public static void handleRecv(Terminal t) {
+		// TODO accept connection
+		if (serverSock == null) {
+			t.write("no server! Call 'sock' first!");
+			return;
+		}
+		if (sock != null) {
+			t.write("closing existing connection first.");
+			sock = closeSock(sock);
+		}
+		try {
+			t.write("waiting for connection...");
+			sock = serverSock.accept();
+		} catch (Exception e) {
+			t.write("Connection failed:");
+			t.write(e.toString());
+			return;
+		}
+		t.write("Connection established!");
+		return;
+	}
+	
+	public static void handleInfo(String name, HashMap<String,Object> vars, Terminal t) {
+		// TODO handle
 	}
 	
 	private static String doXML(String varName, HashMap<String, Object> vars, Terminal t) throws Exception {
@@ -273,7 +358,7 @@ public class ObjectTerminal {
 					throw e; // Throw a conventional exception
 				} catch (Exception e) {continue;}
 			}
-			throw new Exception("Cannot find method for :" + expr);
+			throw new Exception("Cannot find method for: " + expr);
 			// TODO support function calls.
 		} else if (expr.contains(".")) {
 			// Field
@@ -327,7 +412,7 @@ public class ObjectTerminal {
 		t.write("expr :: true");
 		t.write("expr :: false");
 		t.write("expr :: null");
-		t.write("note: Due to lazy parsing, we cannot nest comma-separated lists. (split-on-comma)");
+		t.write("note: Due to overly-simplified parsing, we cannot nest comma-separated lists.");
 	}
 	
 	public static void help(Terminal t) {
@@ -339,10 +424,12 @@ public class ObjectTerminal {
 		t.write("To print an expression result:");
 		t.write("<expr>");
 		t.write("");
+		t.write("To print the socket info: (creates a server socket if needed)");
+		t.write("    sock");
+		t.write("To accept a socket connection:");
+		t.write("    acc");
 		t.write("To send an object:");
 		t.write("    send var");
-		t.write("To recieve an object:");
-		t.write("    recv var");
 		t.write("To print the xml for an object:");
 		t.write("   xml var");
 		t.write("To inspect an object: (-m for methods)");
@@ -479,6 +566,39 @@ public class ObjectTerminal {
 			return (String)m.invoke(null, new Object[] {o});
 		} else {
 			return o.toString();
+		}
+	}
+	
+	// Safely close a socket, returning null
+	public static Socket closeSock(Socket s) {
+		if (sock != null) {
+			try {sock.close();} catch (Exception e) {};
+			sock = null;
+		}
+		return null;
+	}
+	
+	// Safely close a server socket, returning null
+	private static ServerSocket closeSSock(ServerSocket s) {
+		if (sock != null) {
+			try {sock.close();} catch (Exception e) {};
+			sock = null;
+		}
+		return null;
+	}
+	
+	// Sends a message on a socket.
+	private static boolean putMessage(Socket s, String message) {
+		try {
+			OutputStream o = s.getOutputStream();
+			byte[] bMes = message.getBytes();
+			int len = bMes.length;
+			byte[] bLen = ByteBuffer.allocate(4).putInt(len).array();
+			o.write(bLen); // write the length
+			o.write(bMes); // write the message
+			return true;
+		} catch (Exception e) {
+			return false; // Failed.
 		}
 	}
 	

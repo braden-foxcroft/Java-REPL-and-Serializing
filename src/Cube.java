@@ -1,11 +1,8 @@
-public class Cube {
-	private int length;
-	private int width;
+public class Cube extends Square {
 	private float height;
 	
 	public Cube() {
-		this.length = 0;
-		this.width = 0;
+		super();
 		this.height = 0;
 	}
 	
