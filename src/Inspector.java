@@ -1,21 +1,20 @@
 import java.lang.reflect.*;
+import java.util.Collection;
 import java.util.Vector;
 
 class Inspector {
 	
 	// The method we are asked to implement.
-	public static void inspect(Object obj, boolean recursive) {
+	public static void inspect(Object obj, Terminal t) {
 		// The list of objects. A singleton if recursion is off.
 		Vector<Object> objs = new Vector<Object>();
 		// Add the original object
 		objs.add(obj);
-		// Add the rest recursively if needed
-		if (recursive) {
-			appendChildren(obj,objs);
-		}
+		// Add the rest recursively.
+		appendChildren(obj,objs);
 		for (Object o : objs) {
-			System.out.println(objRep(o));
-			System.out.println("\n"); // spacing.
+			t.write(objRep(o));
+			t.write("\n"); // spacing.
 		}
 	}
 	
@@ -34,6 +33,14 @@ class Inspector {
 				}
 			}
 			return;
+		}
+		if (obj instanceof Collection) {
+			for (Object newO: ((Collection<?>)obj).toArray()) {
+				if (newO != null && !objs.contains(newO)) {
+					objs.add(newO);
+					appendChildren(newO, objs); // recurse
+				}
+			}
 		}
 		// search through the fields
 		for (Field f : allFields(obj.getClass())) {
@@ -68,6 +75,9 @@ class Inspector {
 			// For special cases.
 			return res;
 		}
+		if (c.isAssignableFrom(Object.class)) {return res;} // Skip 'object' fields
+		if (c.isAssignableFrom(Integer.class)) {return res;} // Skip 'Integer' fields
+		if (c.isAssignableFrom(Class.class)) {return res;} // Skip 'Class' fields
 		for (Field f : c.getDeclaredFields()) {
 			res.add(f);
 		}
@@ -109,6 +119,10 @@ class Inspector {
 			// For special cases.
 			return res;
 		}
+		if (c.isAssignableFrom(Object.class)) {return res;} // Skip 'object' methods
+		if (c.isAssignableFrom(Integer.class)) {return res;} // Skip 'Integer' fields
+		if (c.isAssignableFrom(Class.class)) {return res;} // Skip 'Class' fields
+		if (c.isArray()) {return res;} // Skip 'array' methods.
 		for (Method m : c.getDeclaredMethods()) {
 			res.add(m);
 		}
@@ -129,8 +143,6 @@ class Inspector {
 		for (Constructor<?> cn : c.getDeclaredConstructors()) {
 			res.add(cn);
 		}
-		// Add superclass constructors.
-		res.addAll(allConstructors(c.getSuperclass()));
 		// Interfaces provide no constructors
 		return res;
 	}
@@ -149,12 +161,16 @@ class Inspector {
 			res = res.concat(indent(1)).concat("array contents = ").
 					concat(niceValue(obj, false)).concat("\n\n");
 		}
+		if (obj instanceof Collection<?>) {
+			res = res.concat(indent(1)).concat("collection contents = ").
+					concat(niceValue(((Collection<?>)obj).toArray(), false)).concat("\n\n");
+		}
 		// Method info
-		res = res.concat(getMethodInfo(obj.getClass())).concat("\n\n");
+		res = res.concat(getMethodInfo(obj.getClass())).concat("\n");
 		// Constructor info
-		res = res.concat(getConstructorInfo(obj.getClass())).concat("\n\n");
+		res = res.concat(getConstructorInfo(obj.getClass())).concat("\n");
 		// Field info
-		res = res.concat(getFieldInfo(obj)).concat("\n\n");
+		res = res.concat(getFieldInfo(obj)).concat("\n");
 		
 		
 		return res;
@@ -188,7 +204,7 @@ class Inspector {
 	static String getMethodInfo(Class<?> c) {
 		String res = indent(1).concat("Methods:\n");
 		for (Method m : allMethods(c)) {
-			res = res.concat(indent(2)).concat(getNiceMethod(m)).concat("\n\n");
+			res = res.concat(indent(2)).concat(getNiceMethod(m)).concat("\n");
 		}
 		return res;
 	}
@@ -197,7 +213,7 @@ class Inspector {
 	static String getConstructorInfo(Class<?> c) {
 		String res = indent(1).concat("Constructors:\n");
 		for (Constructor<?> cns : allConstructors(c)) {
-			res = res.concat(indent(2)).concat(getNiceConstructor(cns)).concat("\n\n");
+			res = res.concat(indent(2)).concat(getNiceConstructor(cns)).concat("\n");
 		}
 		return res;
 	}
@@ -206,7 +222,7 @@ class Inspector {
 	static String getFieldInfo(Object o) {
 		String res = indent(1).concat("Fields:\n");
 		for (Field f : allFields(o.getClass())) {
-			res = res.concat(indent(2)).concat(getNiceField(o,f)).concat("\n\n");
+			res = res.concat(indent(2)).concat(getNiceField(o,f)).concat("\n");
 		}
 		return res;
 	}
@@ -289,6 +305,17 @@ class Inspector {
 		}
 		// Array handling.
 		if (o.getClass().isArray()) {
+			if (o.getClass().componentType().isPrimitive()) {
+				try {
+					return ObjectTerminal.myToString(o);
+				} catch (Exception e) {
+					return "[...]";
+				}
+			}
+			if (o.getClass().getComponentType().isAssignableFrom(Object.class)) {
+				return "[...]"; // to stop endless loops
+			}
+			
 			Object[] os = (Object[]) o;
 			String res = "[";
 			for (int i = 0; i < os.length; i++) {

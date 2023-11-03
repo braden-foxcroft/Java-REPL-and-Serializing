@@ -1,4 +1,5 @@
 import java.io.ByteArrayInputStream;
+import java.io.InputStream;
 import java.io.OutputStream;
 import java.lang.reflect.*;
 import java.net.InetAddress;
@@ -17,6 +18,7 @@ public class ObjectTerminal {
 	
 	private static ServerSocket serverSock = null; // the server socket
 	private static Socket sock = null; // The client-communication socket
+	private static String lastTarget = "noTarget";
 	
 	public static void main(String argv[]) throws ClassNotFoundException {
 		TerminalWrapper tw = new TerminalWrapper();
@@ -53,6 +55,10 @@ public class ObjectTerminal {
 				handleAcc(t); // Accept a connection from a server socket.
 			} else if (c.startsWith("conn ")) {
 				handleConn(t,c.substring(5)); // Accept a connection from a server socket.
+			} else if (c.equals("conn")) {
+				handleConn(t,""); // Accept a connection from a server socket. (use last address)
+			} else if (c.equals("listen")) {
+				handleListen(t,vars); // Accept a connection from a server socket.
 			} else if (c.startsWith("info ")) {
 				c = c.substring(5);
 				handleInfo(c, vars, t);
@@ -111,7 +117,7 @@ public class ObjectTerminal {
 		}
 		String xml;
 		try {
-			xml = Reciever.getMessage(sock.getInputStream(), t);
+			xml = getMessage(sock.getInputStream(), t);
 		} catch (Exception e) {
 			t.write("socket crashed:");
 			t.write(e.toString());
@@ -155,6 +161,15 @@ public class ObjectTerminal {
 		} catch (Exception e) {
 			t.write(e.getMessage());
 			e.printStackTrace();
+		}
+	}
+	
+	// Repeatedly receives objects without waiting for user input.
+	public static void handleListen(Terminal t, HashMap<String,Object> vars) {
+		while (true) {
+			t.write("----------------------------------------------------------");
+			if (!handleRecv("", vars, t)) {break;}
+			handleInfo("", vars, t);
 		}
 	}
 	
@@ -220,15 +235,28 @@ public class ObjectTerminal {
 			t.write("closing existing connection first.");
 			sock = closeSock(sock);
 		}
-		sock = Reciever.makeConnection(target, t);
+		if (target == "") {target = lastTarget;} // Re-use last target
+		sock = makeConnection(target, t);
 		if (sock == null) {return;}
+		lastTarget = target;
 		t.write("Connection established!");
 		return;
 	}
 	
 	
 	public static void handleInfo(String name, HashMap<String,Object> vars, Terminal t) {
-		// TODO handle
+		if (!vars.containsKey(name)) {
+			t.write("Cannot find var: " + name);
+			return;
+		}
+		Object obj = vars.get(name);
+		// Print the result:
+		try {
+			Inspector.inspect(obj, t);
+		} catch (Exception e) {
+			t.write("Could not inspect:");
+			t.write(e.toString());
+		}
 	}
 	
 	private static String doXML(String varName, HashMap<String, Object> vars, Terminal t) throws Exception {
@@ -493,10 +521,13 @@ public class ObjectTerminal {
 		t.write("    acc");
 		t.write("To initiate a socket connection with another terminal:");
 		t.write("    conn <target>");
+		t.write("    conn             // re-uses last target");
 		t.write("To send an object:");
 		t.write("    send var");
 		t.write("To recieve object:");
 		t.write("    recv var");
+		t.write("To recieve objects passively and print their info until the connection closes:");
+		t.write("    listen");
 		t.write("To print the xml for an object:");
 		t.write("   xml var");
 		t.write("To inspect an object:");
@@ -629,6 +660,46 @@ public class ObjectTerminal {
 			return (String)m.invoke(null, new Object[] {o});
 		} else {
 			return o.toString();
+		}
+	}
+	
+	public static Socket makeConnection(String target, Terminal t) {
+		if (!target.contains(":")) {
+			t.write("colon missing! Quitting...");
+			return null;
+		}
+		String[] tPair = target.split(":",2);
+		t.write("Trying to connect...");
+		Socket s = openConnectionFromPair(tPair,t);
+		return s;
+	}
+	
+	private static Socket openConnectionFromPair(String[] tPair, Terminal t) {
+		try {
+			Socket s = new Socket(tPair[0],Integer.valueOf(tPair[1]));
+			return s;
+		} catch (Exception e) {
+			t.write("could not open socket:");
+			t.write(e.toString());
+			return null;
+		}
+	}
+	
+	public static String getMessage(InputStream i, Terminal t) {
+		int len;
+		try {
+			byte[] bLen = i.readNBytes(4);
+			len = ByteBuffer.wrap(bLen).getInt();
+		} catch (Exception e) {
+			t.write("Socket closed.");
+			return null; // This means the socket closed normally.
+		}
+		try {
+			byte[] bStr = i.readNBytes(len);
+			return new String(bStr);
+		} catch (Exception e) {
+			t.write("Socket crashed mid-message.");
+			return null; // Failed.
 		}
 	}
 	

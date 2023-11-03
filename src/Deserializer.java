@@ -165,7 +165,9 @@ public class Deserializer {
 	
 	// Gets a reference object from a reference Element.
 	private Object getRef(Vector<Object> objs, Element e) {
-		return objs.get(Integer.valueOf(e.getText()));
+		int index = Integer.valueOf(e.getText());
+		if (index == -1) {return null;}
+		return objs.get(index);
 	}
 	
 	// Takes a primitive class and a string, and casts it to the wrapper object for that primitive type.
