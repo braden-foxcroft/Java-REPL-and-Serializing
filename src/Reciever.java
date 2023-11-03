@@ -25,7 +25,6 @@ public class Reciever {
 			t.write("colon missing! Quitting...");
 			return null;
 		}
-		// TODO fix use of static 't'. May be uninitialized.
 		String[] tPair = target.split(":",2);
 		t.write("Trying to connect...");
 		Socket s = openConnectionFromPair(tPair,t);
@@ -60,7 +59,7 @@ public class Reciever {
 		}
 	}
 	
-	private static String getMessage(InputStream i, Terminal t) {
+	public static String getMessage(InputStream i, Terminal t) {
 		int len;
 		try {
 			byte[] bLen = i.readNBytes(4);

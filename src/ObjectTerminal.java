@@ -1,3 +1,4 @@
+import java.io.ByteArrayInputStream;
 import java.io.OutputStream;
 import java.lang.reflect.*;
 import java.net.InetAddress;
@@ -8,6 +9,9 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Vector;
 
+import org.jdom.Document;
+import org.jdom.input.SAXBuilder;
+
 
 public class ObjectTerminal {
 	
@@ -17,7 +21,6 @@ public class ObjectTerminal {
 	public static void main(String argv[]) throws ClassNotFoundException {
 		TerminalWrapper tw = new TerminalWrapper();
 		HashMap<String, Object> vars = new HashMap<>();
-		// TODO network stuff
 		mainTerminal(tw,vars);
 		if (serverSock != null) {serverSock = closeSSock(serverSock);}
 		if (sock != null) {sock = closeSock(sock);}
@@ -39,13 +42,15 @@ public class ObjectTerminal {
 			} else if (c.startsWith("send ")) {
 				c = c.substring(5);
 				handleSend(c, vars, t);
+			} else if (c.startsWith("recv ")) {
+				handleRecv(c.substring(5), vars, t);
 			} else if (c.startsWith("xml ")) {
 				c = c.substring(4);
 				handleXML(c, vars, t);
 			} else if (c.equals("sock")) {
 				handleServ(t); // Make a server socket, show all socket info
 			} else if (c.equals("acc")) {
-				handleRecv(t); // Accept a connection from a server socket.
+				handleAcc(t); // Accept a connection from a server socket.
 			} else if (c.startsWith("conn ")) {
 				handleConn(t,c.substring(5)); // Accept a connection from a server socket.
 			} else if (c.startsWith("info ")) {
@@ -61,7 +66,7 @@ public class ObjectTerminal {
 	// Handles a variable assignment. A wrapper for handling error-messages.
 	public static void handleAssignment(String res, String expr, HashMap<String,Object> vars, Terminal t) {
 		try {
-			t.write(myToString(doAssignment(res, expr, vars)));
+			doAssignment(res, expr, vars);
 		} catch (Exception e) {
 			t.write(e.toString());
 		}
@@ -78,7 +83,6 @@ public class ObjectTerminal {
 	
 	// Sends a thing over the server
 	public static void handleSend(String toSend, HashMap<String,Object> vars, Terminal t) {
-		// TODO sending behavior
 		if (sock == null) {
 			t.write("no client socket open! Run 'acc' first!");
 			return;
@@ -98,6 +102,53 @@ public class ObjectTerminal {
 		}
 	}
 	
+	// Receive a value from a socket into a variable.
+	// Returns the success status.
+	public static boolean handleRecv(String toRecv, HashMap<String,Object> vars, Terminal t) {
+		if (sock == null) {
+			t.write("no client socket open! Run 'acc' first!");
+			return false;
+		}
+		String xml;
+		try {
+			xml = Reciever.getMessage(sock.getInputStream(), t);
+		} catch (Exception e) {
+			t.write("socket crashed:");
+			t.write(e.toString());
+			sock = closeSock(sock);
+			return false;
+		}
+		if (xml == null) {
+			sock = closeSock(sock);
+			return false;
+		} // Socket closed.
+		Document xmlDoc;
+		try {
+			ByteArrayInputStream iStr = new ByteArrayInputStream(xml.getBytes());
+			xmlDoc = new SAXBuilder().build(iStr);
+		} catch (Exception e) {
+			t.write("XML parsing error:");
+			t.write(e.toString());
+			return false;
+		}
+		Object result;
+		try {
+			result = new Deserializer().deserialize(xmlDoc);
+		} catch (Exception e) {
+			t.write("Object construction error:");
+			t.write(e.toString());
+			return false;
+		}
+		vars.put(toRecv, result); // store to the variable.
+		try {
+			t.write(myToString(result));
+		} catch (Exception e) {
+			t.write("cannot print object:");
+			t.write(e.toString());
+		}
+		return true;
+	}
+	
 	public static void handleXML(String varName, HashMap<String,Object> vars, Terminal t) {
 		try {
 			t.write(doXML(varName,vars,t));
@@ -109,7 +160,6 @@ public class ObjectTerminal {
 	
 	// Make a server if needed, and print its address.
 	public static void handleServ(Terminal t) {
-		// TODO make server
 		
 		// Make a server
 		if (serverSock == null) {
@@ -143,8 +193,7 @@ public class ObjectTerminal {
 	}
 	
 	// Recieve a connection from the server socket.
-	public static void handleRecv(Terminal t) {
-		// TODO accept connection
+	public static void handleAcc(Terminal t) {
 		if (serverSock == null) {
 			t.write("no server! Call 'sock' first!");
 			return;
@@ -374,7 +423,6 @@ public class ObjectTerminal {
 				} catch (Exception e) {continue;}
 			}
 			throw new Exception("Cannot find method for: " + expr);
-			// TODO support function calls.
 		} else if (expr.contains(".")) {
 			// Field
 			String[] exprs = expr.split("\\.", 2);
@@ -447,11 +495,12 @@ public class ObjectTerminal {
 		t.write("    conn <target>");
 		t.write("To send an object:");
 		t.write("    send var");
+		t.write("To recieve object:");
+		t.write("    recv var");
 		t.write("To print the xml for an object:");
 		t.write("   xml var");
-		t.write("To inspect an object: (-m for methods)");
+		t.write("To inspect an object:");
 		t.write("   info var");
-		t.write("   info -m var");
 		t.write("");
 		t.write("type 'help' to see this again, or 'help expr' to see the expression syntax");
 	}
@@ -480,9 +529,6 @@ public class ObjectTerminal {
 		}
 		return result;
 	}
-	
-	// TODO info command, socket handling, de-serializing.
-	// TODO consider raw types like 'Integer', which we can't actually read the data from.
 	
 	// Gets a field, even if private or from parent.
 	/*
