@@ -19,7 +19,7 @@ public class Square {
 		return length * width;
 	}
 	
-	public String info() {
+	public String toString() {
 		return "Square(length=" + Integer.toString(length) +
 				", width=" + Integer.toString(width) + ")";
 	}

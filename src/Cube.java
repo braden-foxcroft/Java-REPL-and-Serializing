@@ -16,7 +16,7 @@ public class Cube extends Square {
 		return length * width * height;
 	}
 	
-	public String info() {
+	public String toString() {
 		return "Cube(length=" + Integer.toString(length) +
 				", width=" + Integer.toString(width) +
 				", height=" + Float.toString(height) + ")";

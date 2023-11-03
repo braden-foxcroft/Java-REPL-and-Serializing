@@ -1,4 +1,5 @@
 import java.lang.reflect.Array;
+import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.util.Collection;
 import java.util.Iterator;
@@ -52,7 +53,9 @@ public class Deserializer {
 				obj = Integer.valueOf(e.getChild("value").getText());
 			} else {
 				// Normal object or collection.
-				obj = c.getConstructor(new Class<?>[] {}).newInstance(new Object[] {});
+				Constructor<?> cn = c.getConstructor(new Class<?>[] {});
+				cn.setAccessible(true);
+				obj = cn.newInstance(new Object[] {});
 			}
 			objs.add(obj);
 		}

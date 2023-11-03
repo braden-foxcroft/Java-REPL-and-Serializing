@@ -57,6 +57,8 @@ public class ObjectTerminal {
 				handleConn(t,c.substring(5)); // Accept a connection from a server socket.
 			} else if (c.equals("conn")) {
 				handleConn(t,""); // Accept a connection from a server socket. (use last address)
+			} else if (c.equals("break")) {
+				handleBreak(t); // Accept a connection from a server socket. (use last address)
 			} else if (c.equals("listen")) {
 				handleListen(t,vars); // Accept a connection from a server socket.
 			} else if (c.startsWith("info ")) {
@@ -227,6 +229,16 @@ public class ObjectTerminal {
 		}
 		t.write("Connection established!");
 		return;
+	}
+	
+	// Recieve a connection from the server socket.
+	public static void handleBreak(Terminal t) {
+		if (sock != null) {
+			t.write("closing existing connection.");
+			sock = closeSock(sock);
+		} else {
+			t.write("no connection to close!");
+		}
 	}
 	
 	// Create a connection to another terminal
@@ -522,6 +534,8 @@ public class ObjectTerminal {
 		t.write("To initiate a socket connection with another terminal:");
 		t.write("    conn <target>");
 		t.write("    conn             // re-uses last target");
+		t.write("To break a connection:");
+		t.write("    break");
 		t.write("To send an object:");
 		t.write("    send var");
 		t.write("To recieve object:");
@@ -665,7 +679,7 @@ public class ObjectTerminal {
 	
 	public static Socket makeConnection(String target, Terminal t) {
 		if (!target.contains(":")) {
-			t.write("colon missing! Quitting...");
+			t.write("colon missing! Cannot connect.");
 			return null;
 		}
 		String[] tPair = target.split(":",2);
