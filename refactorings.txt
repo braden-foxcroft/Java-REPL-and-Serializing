@@ -9,3 +9,6 @@ Rename var 'res' to 'doc'
 Rename func 'toXML' to 'docToXML'
 Rename var 'm' to 'objToXML'
 Extract method 'openConnection' in 'Reciever.java'
+Rename 'openConnection to 'openConnectionFromPair'
+Removed static 't' from 'Reciever', and replaced it with a local variable
+    and several parameters

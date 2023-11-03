@@ -1,14 +1,11 @@
 import java.io.InputStream;
-import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.nio.ByteBuffer;
 
 public class Reciever {
 	
-	static Terminal t;
-	
 	public static void main(String[] argv) {
-		t = new TerminalWrapper();
+		Terminal t = new TerminalWrapper();
 		String target;
 		if (argv.length == 2) {
 			target = argv[1];
@@ -16,19 +13,26 @@ public class Reciever {
 			t.write("Please enter an 'address:port' to connect to:");
 			target = t.read();
 		}
-		if (!target.contains(":")) {
-			t.write("colon missing! Quitting...");
-		}
-		String[] tPair = target.split(":",2);
-		t.write("Trying to connect...");
-		Socket s = openConnection(tPair);
+		Socket s = makeConnection(target,t);
 		if (s == null) {return;} // failed to open socket.
 		t.write("connected.");
-		getObjects(s);
+		getObjects(s,t);
 		ObjectTerminal.closeSock(s);
 	}
 	
-	private static Socket openConnection(String[] tPair) {
+	public static Socket makeConnection(String target, Terminal t) {
+		if (!target.contains(":")) {
+			t.write("colon missing! Quitting...");
+			return null;
+		}
+		// TODO fix use of static 't'. May be uninitialized.
+		String[] tPair = target.split(":",2);
+		t.write("Trying to connect...");
+		Socket s = openConnectionFromPair(tPair,t);
+		return s;
+	}
+	
+	private static Socket openConnectionFromPair(String[] tPair, Terminal t) {
 		try {
 			Socket s = new Socket(tPair[0],Integer.valueOf(tPair[1]));
 			return s;
@@ -40,7 +44,7 @@ public class Reciever {
 	}
 	
 	// Handles the receiving of objects and printing them out.
-	private static void getObjects(Socket s) {
+	private static void getObjects(Socket s, Terminal t) {
 		InputStream in;
 		try {
 			in = s.getInputStream();
@@ -49,14 +53,14 @@ public class Reciever {
 			return;
 		}
 		while (true) {
-			String res = getMessage(in);
+			String res = getMessage(in,t);
 			if (res == null) {break;}
 			t.write("----------------------------------------------------------------");
 			t.write(res);
 		}
 	}
 	
-	private static String getMessage(InputStream i) {
+	private static String getMessage(InputStream i, Terminal t) {
 		int len;
 		try {
 			byte[] bLen = i.readNBytes(4);

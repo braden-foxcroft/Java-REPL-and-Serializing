@@ -86,6 +86,7 @@ public class Serializer {
 				e.addContent(t);
 				res.addContent(e);
 			}
+			return res; // Treated like an array.
 		}
 		for (Field f : ObjectTerminal.allFields(o.getClass())) {
 			try {

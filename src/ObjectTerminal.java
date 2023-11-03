@@ -46,6 +46,8 @@ public class ObjectTerminal {
 				handleServ(t); // Make a server socket, show all socket info
 			} else if (c.equals("acc")) {
 				handleRecv(t); // Accept a connection from a server socket.
+			} else if (c.startsWith("conn ")) {
+				handleConn(t,c.substring(5)); // Accept a connection from a server socket.
 			} else if (c.startsWith("info ")) {
 				c = c.substring(5);
 				handleInfo(c, vars, t);
@@ -162,6 +164,19 @@ public class ObjectTerminal {
 		t.write("Connection established!");
 		return;
 	}
+	
+	// Create a connection to another terminal
+	public static void handleConn(Terminal t, String target) {
+		if (sock != null) {
+			t.write("closing existing connection first.");
+			sock = closeSock(sock);
+		}
+		sock = Reciever.makeConnection(target, t);
+		if (sock == null) {return;}
+		t.write("Connection established!");
+		return;
+	}
+	
 	
 	public static void handleInfo(String name, HashMap<String,Object> vars, Terminal t) {
 		// TODO handle
@@ -428,6 +443,8 @@ public class ObjectTerminal {
 		t.write("    sock");
 		t.write("To accept a socket connection:");
 		t.write("    acc");
+		t.write("To initiate a socket connection with another terminal:");
+		t.write("    conn <target>");
 		t.write("To send an object:");
 		t.write("    send var");
 		t.write("To print the xml for an object:");
