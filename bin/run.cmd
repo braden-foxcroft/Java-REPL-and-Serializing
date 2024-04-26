@@ -1,1 +1,0 @@
-@java -classpath "C:\Users\Braden\Desktop\programs\CPSC_501\a3\CPSC501A3\jdom-1.1.3.jar;C:\Users\Braden\Desktop\programs\CPSC_501\a3\CPSC501A3\bin" %1

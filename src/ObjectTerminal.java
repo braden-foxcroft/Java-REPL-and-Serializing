@@ -548,6 +548,7 @@ public class ObjectTerminal {
 		t.write("   info var");
 		t.write("");
 		t.write("type 'help' to see this again, or 'help expr' to see the expression syntax");
+		t.write("type 'exit' to exit.");
 	}
 	
 	// Gets a field, even if private or from parent.
